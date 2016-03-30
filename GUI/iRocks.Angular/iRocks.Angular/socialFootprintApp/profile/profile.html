@@ -1,0 +1,33 @@
+﻿
+<div id="ProfileGlobal">
+    <div id="ProfileTitle">
+        <div id="ProfilePicture">
+            <img ng-src="http://graph.facebook.com/{{profile.FacebookDetail.FacebookUserId}}/picture" />
+        </div>
+        <div id="ProfileName">
+            <div>{{profile.FirstName}} {{profile.LastName}}</div>
+        </div>
+    </div>
+    <div id="FootprintContainer"></div>
+
+
+
+</div>
+<div ng-repeat="post in profile.Posts" class="list-group col-md-12 col-lg-8 col-lg-offset-2 list-group-item-info">
+    <div class="aGlobalPostProfile">
+        <div class=" CategoryNewsFeed displayTableCell">
+            <div class="CategoryRotation">{{post.Category}}</div>
+
+        </div>
+        <div class="displayTableCell">
+            <div>
+                <div ng-repeat="post in [post]" ng-include="'socialFootprintApp/shared/post.html'"></div>
+
+            </div>
+        </div>
+    </div>
+</div>
+    
+
+
+

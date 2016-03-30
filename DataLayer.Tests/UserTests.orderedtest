@@ -1,0 +1,10 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<OrderedTest name="usertests" storage="c:\users\pydez_000\desktop\irocks\v1.0.0.8\datalayer.tests\usertests.orderedtest" id="c8dac232-b216-4568-a5f1-08378aeed4b5" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <TestLinks>
+    <TestLink id="8b68e758-afd2-64fa-9ec8-f2fbf4b9bf8b" name="Get_all_AppUser_should_return_6_results" storage="bin\debug\irocks.datalayer.tests.dll" type="Microsoft.VisualStudio.TestTools.TestTypes.Unit.UnitTestElement, Microsoft.VisualStudio.QualityTools.Tips.UnitTest.ObjectModel, Version=12.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
+    <TestLink id="0466d9c1-b68e-18aa-5b80-789f7e7df3b8" name="Find_User_should_retrieve_existing_entity" storage="bin\debug\irocks.datalayer.tests.dll" type="Microsoft.VisualStudio.TestTools.TestTypes.Unit.UnitTestElement, Microsoft.VisualStudio.QualityTools.Tips.UnitTest.ObjectModel, Version=12.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
+    <TestLink id="7cce3082-5f6f-84bb-d289-ef89352c0f26" name="Insert_should_assign_identity_to_new_entity" storage="bin\debug\irocks.datalayer.tests.dll" type="Microsoft.VisualStudio.TestTools.TestTypes.Unit.UnitTestElement, Microsoft.VisualStudio.QualityTools.Tips.UnitTest.ObjectModel, Version=12.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
+    <TestLink id="7ae70f34-e472-f731-0630-902233e85a00" name="Modify_should_update_existing_entity" storage="bin\debug\irocks.datalayer.tests.dll" type="Microsoft.VisualStudio.TestTools.TestTypes.Unit.UnitTestElement, Microsoft.VisualStudio.QualityTools.Tips.UnitTest.ObjectModel, Version=12.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
+    <TestLink id="1ab0c927-f6d2-fd50-7599-c22eef5e94e2" name="Delete_should_remove_entity" storage="bin\debug\irocks.datalayer.tests.dll" type="Microsoft.VisualStudio.TestTools.TestTypes.Unit.UnitTestElement, Microsoft.VisualStudio.QualityTools.Tips.UnitTest.ObjectModel, Version=12.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
+  </TestLinks>
+</OrderedTest>

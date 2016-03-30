@@ -1,0 +1,728 @@
+﻿using Facebook;
+using iRocks.AI.Helpers;
+using iRocks.DataLayer;
+using NClassifier;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Web;
+
+namespace iRocks.AI.Entities
+{
+    public class FacebookDataFeed : ISocialNetworkDataFeed
+    {
+
+        private IPostRepository _PostRepository;
+        private IUserRepository _UserRepository;
+        private IFacebookUserDetailRepository _FacebookUserDetailRepository;
+        private INotificationRepository _NotificationRepository;
+        private ICategoryRepository _CategoryRepository;
+        private IClassifier _Classifier;
+
+        private List<Category> _Categories;
+        public FacebookDataFeed(IClassifier classifier, IUserRepository userRepository, IPostRepository postRepository, IFacebookUserDetailRepository facebookUserDetailRepository, ICategoryRepository categoryRepository, INotificationRepository notificationRepository)
+        {
+            _UserRepository = userRepository;
+            _PostRepository = postRepository;
+            _FacebookUserDetailRepository = facebookUserDetailRepository;
+            _NotificationRepository = notificationRepository;
+            _CategoryRepository = categoryRepository;
+            _Categories = new List<Category>();
+            _Classifier = classifier;
+        }
+
+
+        public async Task FeedData(AppUser dbUser)
+        {
+            await Task.Run(() => //Get information about posts and friends posts
+                   {
+                       //int forHowManyYears = 3;
+                       dbUser = _UserRepository.Select(DephtLevel.NewsFeed, new { AppUserId = dbUser.AppUserId }).FirstOrDefault();
+                       dbUser = FeedShortTermNewsfeed(dbUser);
+                       _UserRepository.Save(DephtLevel.NewsFeed, dbUser);
+                       //for (int i = 0; i < forHowManyYears; ++i)
+                       //{
+                       //    dbUser = FeedOneYear(dbUser, DateTime.Today.AddYears(-i), DateTime.Today.AddYears(-i - 1));
+                       //    _UserRepository.Save(DephtLevel.NewsFeed, dbUser);
+                       //}
+
+                       //Classification
+                       var Categories = _CategoryRepository.Select();
+                       foreach (var publication in dbUser.Newsfeed)
+                       {
+                           if (publication.Post.CategoryId == 1)
+                           {
+                               var bestCategory = _Classifier.Classify(publication.Post, Categories);
+                               publication.Post.CategoryId = bestCategory.CategoryId;
+                               publication.Post.PostCategory = bestCategory;
+                           }
+                       }
+                       //we have agreggate all data from facebook and DB
+                       //we need to delete obsolete data from FB
+                       dbUser = CleanDbUser(dbUser);
+                       _UserRepository.Save(DephtLevel.NewsFeed, dbUser);
+                   });
+        }
+
+
+        private AppUser FeedShortTermNewsfeed(AppUser dbUser)
+        {
+            try
+            {
+                var newUser = false;
+                if (dbUser == null)
+                    throw new NullReferenceException("Db User cannot be null");
+                if (dbUser.FacebookDetail == null)
+                    throw new NullReferenceException("Db User need FacebookDetails to be fed by Facebook");
+                if (!dbUser.Activated)
+                    newUser = true;
+
+                dbUser.Activated = true;
+                dbUser.FacebookDetail.FacebookAccessToken = GetExtendedAccessToken(dbUser.FacebookDetail.FacebookAccessToken);
+
+                var client = new FacebookClient(dbUser.FacebookDetail.FacebookAccessToken);
+                dynamic localeFB = client.Get("me", new { fields = "locale" });
+                string locale = localeFB["locale"];
+                dynamic result = client.Get("me", new { locale = locale, fields = "first_name,last_name,email,id,gender,birthday,friends.fields(first_name,last_name,email,id,gender),home.filter(others).fields(id,message_tags,story_tags,from,created_time,link,message,name,object_id,full_picture,privacy,source,status_type,story,type,updated_time).limit(100)" });
+
+                AppUser fbUser = ConvertFullUserFromFacebookToAppUser(result, client, locale);
+
+                dbUser = ParseFullUser(dbUser, fbUser);
+
+
+
+
+
+                if (newUser)
+                {
+                    foreach (var friend in dbUser.Friends)
+                    {
+                        if (friend.Activated)
+                        {
+                            var newNotification = new Notification()
+                            {
+                                IsRed = false,
+                                AppUserId = friend.AppUserId,
+                                ObjectType = NotificationObject.AppUser.ToString(),
+                                ObjectId = dbUser.AppUserId,
+                                Information = dbUser.FirstName + " " + dbUser.LastName + TranslationHelper.GetTranslation(friend.Locale, "NEW_FRIEND_NOTIFICATION"),
+                                NotificationDate = DateTime.Now
+
+                            };
+                            _NotificationRepository.Insert(newNotification);
+                        }
+                    }
+                }
+                return dbUser;
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+        }
+
+
+        /*private AppUser FeedOneYear(AppUser dbUser, DateTime until, DateTime since)
+        {
+            try
+            {
+                if (dbUser == null)
+                    throw new NullReferenceException("Db User cannot be null");
+                if (dbUser.FacebookDetail == null)
+                    throw new NullReferenceException("Db User need FacebookDetails to be fed by Facebook");
+
+                dbUser.FacebookDetail.FacebookAccessToken = GetExtendedAccessToken(dbUser.FacebookDetail.FacebookAccessToken);
+
+                var client = new FacebookClient(dbUser.FacebookDetail.FacebookAccessToken);
+                dbUser.Posts = GetPostsFromFacebook(true, dbUser, client, until, since);
+
+                foreach (var userFriend in dbUser.Friends)
+                {
+                    userFriend.Posts = GetPostsFromFacebook(true, userFriend, client, until, since);
+                }
+                return dbUser;
+
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+        }*/
+
+        private AppUser CleanDbUser(AppUser dbUser)
+        {
+            //To Do Check for obsolete post/friends/etc
+            return dbUser;
+        }
+
+
+        #region ParseDataFromFacebookWithDataFromDB
+        private List<Post> MapPostsWithDB(List<Post> postsFromFacebook, List<Post> PostsFromDb)
+        {
+            var Posts = new List<Post>();
+            foreach (var post in postsFromFacebook)
+            {
+                var dbposts = PostsFromDb.Where(p => p.FacebookDetail.FacebookPostId == post.FacebookDetail.FacebookPostId);
+                if (dbposts.Count() > 0)
+                    Posts.Add(ParsePost(dbposts.First(), post));
+                else
+                    Posts.Add(post);
+            }
+            return Posts;
+
+        }
+        private List<Publication> MapNewsfeedWithDB(List<Publication> newsfeedFromFacebook, List<AppUser> Friends)
+        {
+            var ParsedNewsfeed = new List<Publication>();
+
+            var ExistingPosts = _PostRepository.Select(
+                new
+                {
+                    FacebookPostId = GetFacebookPostIdRecursive(newsfeedFromFacebook).ToList()
+                }); //on recupere l'ensemble des post dejà present dans la base pour les posts du fil et leurs enfants.
+
+            var ExistingUsers = _UserRepository.Select(DephtLevel.UserProfile,
+                new
+                {
+                    FacebookUserId = GetFacebookUserIdRecursive(newsfeedFromFacebook).ToList()
+                }); //on recupere l'ensemble des user dejà present dans la base pour les posts du fil et leurs enfants.
+
+
+            foreach (var pair in newsfeedFromFacebook)
+            {
+                ParsedNewsfeed.Add(ParsePublicationRecursive(ExistingPosts, ExistingUsers, pair));
+            }
+            return ParsedNewsfeed;
+
+        }
+
+        private IEnumerable<string> GetFacebookPostIdRecursive(List<Publication> newsFeed)
+        {
+            var children = newsFeed.Where(p => p.Post.FacebookDetail.ChildPublication != null).Select(x => x.Post.FacebookDetail.ChildPublication).ToList();
+            if (children.Any())
+            {
+                return newsFeed.Select(x => x.Post.FacebookDetail.FacebookPostId).Concat(GetFacebookPostIdRecursive(children));
+            }
+            return newsFeed.Select(x => x.Post.FacebookDetail.FacebookPostId);
+        }
+        private IEnumerable<string> GetFacebookUserIdRecursive(List<Publication> newsFeed)
+        {
+            var children = newsFeed.Where(p => p.Post.FacebookDetail.ChildPublication != null).Select(x => x.Post.FacebookDetail.ChildPublication).ToList();
+            if (children.Any())
+            {
+                return newsFeed.Select(x => x.User.FacebookDetail.FacebookUserId).Concat(GetFacebookPostIdRecursive(children));
+            }
+            return newsFeed.Select(x => x.User.FacebookDetail.FacebookUserId);
+        }
+
+        private Publication ParsePublicationRecursive(IEnumerable<Post> existingPosts, IEnumerable<AppUser> existingUsers, Publication publicationFromFacebook)
+        {
+            var parsedPost = publicationFromFacebook.Post;
+            var parsedUser = publicationFromFacebook.User;
+
+            var dbPost = existingPosts.Where(p => p.FacebookDetail.FacebookPostId == publicationFromFacebook.Post.FacebookDetail.FacebookPostId).FirstOrDefault();
+            var dbUser = existingUsers.Where(p => p.FacebookDetail.FacebookUserId == publicationFromFacebook.User.FacebookDetail.FacebookUserId).FirstOrDefault();
+
+
+            if (dbPost != null)
+                parsedPost = ParsePost(dbPost, publicationFromFacebook.Post);
+            if (dbUser != null)
+                parsedUser = ParseUser(dbUser, publicationFromFacebook.User);
+            if (publicationFromFacebook.Post.FacebookDetail.ChildPublication != null)
+            {
+                parsedPost.FacebookDetail.ChildPublication = ParsePublicationRecursive(existingPosts, existingUsers, publicationFromFacebook.Post.FacebookDetail.ChildPublication);
+            }
+            return new Publication(parsedPost, parsedUser);
+        }
+
+
+
+        private Post ParsePost(Post PostFromDb, Post PostFromFacebook)
+        {
+            Post parsedPost = PostFromDb.DeepClone();
+            parsedPost.CreationDate = PostFromFacebook.CreationDate;
+            parsedPost.FacebookDetail = PostFromDb.FacebookDetail.DeepClone();
+
+            parsedPost.FacebookDetail.FacebookPostId = PostFromFacebook.FacebookDetail.FacebookPostId;
+            parsedPost.FacebookDetail.AttachedObjectId = PostFromFacebook.FacebookDetail.FacebookPostId.ToString();
+            parsedPost.FacebookDetail.GeneralStatusType = PostFromFacebook.FacebookDetail.GeneralStatusType;
+            parsedPost.FacebookDetail.Link = PostFromFacebook.FacebookDetail.Link;
+            parsedPost.FacebookDetail.Caption = PostFromFacebook.FacebookDetail.Caption;
+            parsedPost.FacebookDetail.LinkName = PostFromFacebook.FacebookDetail.LinkName;
+            parsedPost.FacebookDetail.Message = PostFromFacebook.FacebookDetail.Message;
+            parsedPost.FacebookDetail.Picture = PostFromFacebook.FacebookDetail.Picture;
+            parsedPost.FacebookDetail.Privacy = PostFromFacebook.FacebookDetail.Privacy;
+            parsedPost.FacebookDetail.StatusType = PostFromFacebook.FacebookDetail.StatusType;
+
+            parsedPost.FacebookDetail.UpdateTime = PostFromFacebook.FacebookDetail.UpdateTime;
+            parsedPost.FacebookDetail.VideoSource = PostFromFacebook.FacebookDetail.VideoSource;
+            parsedPost.FacebookDetail.ChildPostId = PostFromFacebook.FacebookDetail.ChildPostId;
+            parsedPost.FacebookDetail.ChildPublication = PostFromFacebook.FacebookDetail.ChildPublication;
+            foreach (var translation in PostFromFacebook.FacebookDetail.Stories)
+            {
+                var existingTranslations = parsedPost.FacebookDetail.Stories.Where(t => t.Locale == translation.Locale).ToList();
+                if (existingTranslations.Any())
+                    existingTranslations.ForEach(t => t.Story = translation.Story);
+                else
+                    parsedPost.FacebookDetail.Stories.Add(translation);
+
+            }
+            return parsedPost;
+        }
+
+        private AppUser ParseUser(AppUser UserFromDb, AppUser UserFromFacebook) //Parse a User and its posts but not its friends 
+        {
+            //AppUser parsedUser = _UserRepository.Select(LoadingDephtLevel.Friends, new { AppUserId = UserFromDb.AppUserId }).FirstOrDefault();
+            var ParsedUser = UserFromDb.DeepClone();
+            ParsedUser.FirstName = UserFromFacebook.FirstName;
+            ParsedUser.LastName = UserFromFacebook.LastName;
+            ParsedUser.EmailAddress = !string.IsNullOrWhiteSpace(UserFromFacebook.EmailAddress) ? UserFromFacebook.EmailAddress : UserFromDb.EmailAddress;
+            ParsedUser.FacebookDetail.FacebookUserId = UserFromFacebook.FacebookDetail.FacebookUserId;
+            ParsedUser.Gender = UserFromFacebook.Gender;
+            ParsedUser.Birthday = UserFromFacebook.Birthday;// May Be problematic with SQL server restriction
+            ParsedUser.Locale = UserFromFacebook.Locale;
+            var tempDBPosts = new List<Post>(ParsedUser.Posts.Select(x => x.DeepClone()));
+            ParsedUser.Posts.Clear();
+            ParsedUser.Posts = MapPostsWithDB(UserFromFacebook.Posts, tempDBPosts);
+
+            ParsedUser.Friends.Clear();
+
+            if (!ParsedUser.Footprint.Any())
+                ParsedUser.Footprint = UserFromFacebook.Footprint;
+            return ParsedUser;
+        }
+        private AppUser ParseFullUser(AppUser UserFromDb, AppUser UserFromFacebook)
+        {
+            AppUser parsedUser = ParseUser(UserFromDb, UserFromFacebook);
+
+            List<string> facebookIds = UserFromDb.Friends.ToList().Select(f => f.FacebookDetail.FacebookUserId).ToList();
+
+            foreach (var friend in UserFromFacebook.Friends.Where(f => facebookIds.Contains(f.FacebookDetail.FacebookUserId))) //already friend, already in base
+            {
+                var dbfriend = UserFromDb.Friends.Where(f => f.FacebookDetail.FacebookUserId == friend.FacebookDetail.FacebookUserId).FirstOrDefault();
+                parsedUser.Friends.Add(ParseUser(dbfriend, friend));
+            }
+
+            IEnumerable<AppUser> notFriendAppUser = UserFromFacebook.Friends.Where(f => !facebookIds.Contains(f.FacebookDetail.FacebookUserId));
+            List<string> notFriendFacebookIds = notFriendAppUser.ToList().Select(f => f.FacebookDetail.FacebookUserId).ToList();
+
+            var dbNewFriends = _UserRepository.Select(DephtLevel.UserProfile, new { FacebookUserId = notFriendFacebookIds });
+            foreach (var friend in notFriendAppUser) // not friend yet
+            {
+                var dbNewFriend = dbNewFriends.Where(f => f.FacebookDetail.FacebookUserId == friend.FacebookDetail.FacebookUserId).FirstOrDefault();
+                if (dbNewFriend != null) //not friend yet, already in base
+                {
+                    parsedUser.Friends.Add(ParseUser(dbNewFriend, friend));
+                }
+                else //not friend yet, not in base yet
+                {
+                    parsedUser.Friends.Add(friend);
+                }
+            }
+
+
+            parsedUser.Newsfeed = MapNewsfeedWithDB(UserFromFacebook.Newsfeed, parsedUser.Friends);
+
+            return parsedUser;
+        }
+        #endregion
+
+
+
+        #region Tools
+        private string GetExtendedAccessToken(string ShortLivedToken)
+        {
+            FacebookClient client = new FacebookClient();
+            string extendedToken = "";
+            try
+            {
+                dynamic result = client.Get("/oauth/access_token", new
+                {
+                    grant_type = "fb_exchange_token",
+                    client_id = GetPartiesIdentificationHelper.FacebookAppId,
+                    client_secret = GetPartiesIdentificationHelper.FacebookAppSecret,
+                    fb_exchange_token = ShortLivedToken
+                });
+                extendedToken = result.access_token;
+            }
+            catch (Exception ex)
+            {
+                extendedToken = ShortLivedToken;
+            }
+            return extendedToken;
+        }
+
+        private bool isPublic(string privacy)
+        {
+            return privacy.ToUpperInvariant() != "SELF" && privacy.ToUpperInvariant() != "CUSTOM" && privacy.ToUpperInvariant() != "PRIVATE";
+        }
+
+        private bool isLinkNameEqual(string linkName, AppUser user)
+        {
+            if (linkName == user.FirstName)
+            {
+                return true;
+            }
+            if (linkName == user.FirstName + " " + user.LastName)
+            {
+                return true;
+            }
+            return false;
+        }
+        private void AddFBPostsToUser(bool getAllPost, dynamic posts, AppUser user, FacebookClient client, string locale)
+        {
+            string tempUntil = "";
+            string nextPostsUrl = "";
+            bool stop = false;
+
+            List<Post> tempPosts = user.Posts.Select(p => p.DeepClone()).ToList();
+            List<Post> FBPosts = new List<Post>();
+            user.Posts = new List<Post>();
+
+            while (posts["data"].Count != 0 && !stop)
+            {
+
+
+                Uri uri;
+
+                if (Uri.TryCreate(nextPostsUrl, UriKind.Absolute, out uri))
+                {
+                    var query = HttpUtility.ParseQueryString(uri.Query);
+
+                    var newUntil = query.Get("until");
+                    if (tempUntil == newUntil)
+                        stop = true;// infinite loop
+                    tempUntil = newUntil;
+                }
+
+
+                if (nextPostsUrl == posts["paging"].next)
+                    stop = true;// infinite loop
+                nextPostsUrl = posts["paging"].next;
+
+
+                foreach (var post in posts["data"])
+                {
+                    if (isPublic((string)post["privacy"].value))
+                    {
+                        FBPosts.Add(ConvertPostFromFacebookToAppPost(post, locale));
+                    }
+                }
+
+
+                if (getAllPost)
+                {
+                    try
+                    {
+                        posts = client.Get(nextPostsUrl);
+                    }
+                    catch (Exception ex)
+                    {
+                        //problem with Facebook... 
+                        //TO DO : implement solution to this problem
+                    }
+                }
+                else
+                    stop = true;
+            }
+            user.Posts.AddRange(MapPostsWithDB(FBPosts, tempPosts));
+        }
+
+        /*private List<Post> GetPostsFromFacebook(bool getAllPost, AppUser user, FacebookClient client, DateTime until, DateTime since)
+        {
+            dynamic result = client.Get(user.FacebookDetail.FacebookUserId, new { fields = "posts.fields(id,from,created_time,link,message,name,object_id,picture,privacy,source,status_type,story,type,updated_time).since(" + since.ToString("yyyy-MM-dd") + ").until(" + until.ToString("yyyy-MM-dd") + ")" });
+
+            if (result != null && result.Keys.Count > 1)
+            {
+                dynamic posts = result["posts"];
+                AddFBPostsToUser(getAllPost, posts, user, client);
+            }
+            return user.Posts;
+        }*/
+
+        #endregion
+
+
+
+        #region ConvertDataFromFacebook
+        private Post ConvertPostFromFacebookToAppPost(dynamic facebookPost, string locale)
+        {
+            var post = new Post()
+            {
+                CategoryId = 1,
+                Activated = true,
+                CreationDate = Convert.ToDateTime(facebookPost.created_time.ToString())
+            };
+            post.FacebookDetail = new FacebookPostDetail()
+            {
+                FacebookPostId = facebookPost.id,
+                Link = facebookPost.link,
+                Caption = facebookPost.caption,
+                Message = facebookPost.message,
+                LinkName = facebookPost.name,
+                AttachedObjectId = facebookPost.object_id,
+                Picture = facebookPost.full_picture,
+                Privacy = facebookPost.privacy.value.ToString(),
+                VideoSource = facebookPost.source,
+                StatusType = facebookPost.status_type,
+
+                GeneralStatusType = facebookPost.type,
+                UpdateTime = Convert.ToDateTime(facebookPost.updated_time.ToString())
+            };
+            if (!string.IsNullOrWhiteSpace(facebookPost.story))
+            {
+                post.FacebookDetail.Stories.Add(new StoryTranslation()
+                {
+                    Story = facebookPost.story,
+                    Locale = locale
+                });
+            }
+            return post;
+
+        }
+        private AppUser ConvertUserFromFacebookPostToAppUser(dynamic facebookPostFrom)
+        {
+            AppUser user = new AppUser();
+            user.FacebookDetail = new FacebookUserDetail();
+            user.FirstName = facebookPostFrom.name;
+            user.Activated = false;
+            user.SigningUpDate = DateTime.Now;
+            user.LastLogInDate = DateTime.Now;
+            user.FacebookDetail.FacebookUserId = facebookPostFrom.id;
+            user.Footprint = FootprintHelper.GetNewFootprint(_Categories, _CategoryRepository);
+            return user;
+        }
+
+
+        private AppUser ConvertUserFromFacebookToAppUser(dynamic facebookUser, FacebookClient fbClient, string locale = "")
+        {
+            AppUser user = new AppUser();
+            user.FacebookDetail = new FacebookUserDetail();
+            user.FirstName = facebookUser.first_name;
+            user.LastName = facebookUser.last_name;
+            user.EmailAddress = facebookUser.email;
+            user.Gender = facebookUser.gender == "male" ? true : false;
+            user.Birthday = facebookUser.birthday != null ? DateTime.ParseExact(facebookUser.birthday, "MM/dd/yyyy", System.Globalization.CultureInfo.InvariantCulture) : DateTime.Today;
+            user.Activated = false;
+            user.SigningUpDate = DateTime.Now;
+            user.LastLogInDate = DateTime.Now;
+            user.FacebookDetail.FacebookUserId = facebookUser.id;
+            user.Locale = locale;
+            user.Footprint = FootprintHelper.GetNewFootprint(_Categories, _CategoryRepository);
+            dynamic posts = facebookUser.posts;
+            if (posts == null)
+                return user;
+            AddFBPostsToUser(false, posts, user, fbClient, locale);
+            return user;
+
+
+        }
+        
+        private AppUser ConvertFullUserFromFacebookToAppUser(dynamic facebookUser, FacebookClient fbClient, string locale)
+        {
+
+            int MaxPostCount = 300;
+            List<AppUser> ImplicatedOthers = new List<AppUser>();
+            Dictionary<string, Tuple<Publication, List<FacebookStoryTag>>> NewsfeedDirty = new Dictionary<string, Tuple<Publication, List<FacebookStoryTag>>>();
+            AppUser user = ConvertUserFromFacebookToAppUser(facebookUser, fbClient, locale);
+            user.Activated = true;
+
+            dynamic friends = facebookUser.friends;
+            if (friends != null)
+            {
+                while (friends["data"].Count != 0)
+                {
+                    string nextfriendsUrl = friends["paging"].next;
+
+                    foreach (var friend in friends["data"])
+                        user.Friends.Add(ConvertUserFromFacebookToAppUser(friend, fbClient));
+
+                    friends = fbClient.Get(nextfriendsUrl);
+                }
+            }
+            dynamic home = facebookUser.home;
+            if (home != null)
+            {
+
+                bool noMorePage = false;
+                while (home["data"].Count != 0 && user.Newsfeed.Count < MaxPostCount && !noMorePage)
+                {
+
+
+                    foreach (var post in home["data"])
+                    {
+                        if (isPublic((string)post["privacy"].value))
+                        {
+                            var poster = ImplicatedOthers.Where(p => p.FacebookDetail.FacebookUserId == post.from.id).FirstOrDefault();
+                            if (poster == null)
+                                poster = ConvertUserFromFacebookPostToAppUser(post.from);
+
+                            ImplicatedOthers.Add(poster);
+                            Post newPost = ConvertPostFromFacebookToAppPost(post, locale);
+                            newPost.AppUserId = poster.AppUserId;
+
+
+                            // var ids = newPost.FacebookDetail.FacebookPostId.Split('_');
+                            var storyTags = new List<FacebookStoryTag>();
+                            if (post.ContainsKey("story_tags"))
+                            {
+                                //((Facebook.JsonObject)((Facebook.JsonArray)((Facebook.JsonObject)((Facebook.JsonObject)post)["story_tags"]).First().Value)[0])["id"]
+                                foreach (var tag in post["story_tags"])
+                                {
+                                    var newTag = new FacebookStoryTag();
+                                    newTag.TagNumber = Convert.ToInt32(tag.Key);
+                                    newTag.Id = tag.Value[0].id;
+                                    newTag.Name = tag.Value[0].name;
+                                    newTag.SetType(tag.Value[0].type);
+                                    storyTags.Add(newTag);
+                                }
+                            }
+                            if (!NewsfeedDirty.ContainsKey(newPost.FacebookDetail.FacebookPostId)) // TO DO : pk y a t'il des doublons d'id? Faut t'il les traiter?
+                                NewsfeedDirty.Add(newPost.FacebookDetail.FacebookPostId, new Tuple<Publication, List<FacebookStoryTag>>(new Publication(newPost, poster), storyTags));
+
+
+                        }
+                    }
+
+                    if (home.ContainsKey("paging"))
+                    {
+                        if (home["paging"].ContainsKey("next"))
+                        {
+                            string nextHomeUrl = home["paging"].next;
+                            home = fbClient.Get(nextHomeUrl);
+                        }
+                        else
+                            noMorePage = true;
+                    }
+                    else
+                        noMorePage = true;
+                }
+
+                List<string> usedIds = new List<string>();
+
+                foreach (var publication in NewsfeedDirty)
+                {
+
+                    var parent = NewsfeedDirty.Values.Where(p => p.Item1.Post.FacebookDetail.Link == publication.Value.Item1.Post.FacebookDetail.Link && isLinkNameEqual(p.Item1.Post.FacebookDetail.LinkName, publication.Value.Item1.User)).FirstOrDefault();
+                    if (parent != null)
+                    {
+                        if (!IsParentAlreadychild(parent.Item1.Post, publication.Value.Item1.Post))
+                        {
+                            parent.Item1.Post.FacebookDetail.ChildPublication = publication.Value.Item1;
+                            parent.Item1.Post.FacebookDetail.ChildPostId = publication.Value.Item1.Post.PostId;
+                            parent.Item1.Post.FacebookDetail.GeneralStatusType = "parent";
+                            usedIds.Add(publication.Value.Item1.Post.FacebookDetail.FacebookPostId);
+                        }
+                    }
+                    bool hasChild = false;
+                    if (publication.Value.Item1.Post.FacebookDetail.Link != null)
+                    {
+                        var childs = NewsfeedDirty.Where(p => p.Key.Contains(publication.Value.Item1.Post.FacebookDetail.Link.Split(new string[] { "posts/" }, StringSplitOptions.None).LastOrDefault())
+                                                            && p.Key != publication.Key);
+
+                        if (childs.Count() > 0)
+                        {
+                            hasChild = true;
+                            var child = childs.First().Value.Item1;
+                            if (!IsParentAlreadychild(publication.Value.Item1.Post, child.Post))
+                            {
+                                publication.Value.Item1.Post.FacebookDetail.ChildPublication = child;
+                                publication.Value.Item1.Post.FacebookDetail.ChildPostId = child.Post.PostId;
+                                publication.Value.Item1.Post.FacebookDetail.GeneralStatusType = "parent";
+                                usedIds.Add(child.Post.FacebookDetail.FacebookPostId);
+                            }
+                        }
+                    }
+                    if (!hasChild)
+                    {
+                        if (publication.Value.Item2.Count > 1)
+                        {
+                            foreach (var tag in publication.Value.Item2.Where(t => t.TagNumber > 0 && t.Type != FacebookStoryTagType.other))
+                            {
+                                var child = NewsfeedDirty.Where(p => p.Key.Contains(tag.Id)
+                                                                   && p.Key != publication.Key).Select(p => p.Value.Item1).FirstOrDefault();
+                                if (child != null)
+                                {
+                                    if (!IsParentAlreadychild(publication.Value.Item1.Post, child.Post))
+                                    {
+
+                                        publication.Value.Item1.Post.FacebookDetail.ChildPublication = child;
+                                        publication.Value.Item1.Post.FacebookDetail.ChildPostId = child.Post.PostId;
+                                        publication.Value.Item1.Post.FacebookDetail.GeneralStatusType = "parent";
+                                        usedIds.Add(child.Post.FacebookDetail.FacebookPostId);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+
+                }
+
+                user.Newsfeed = NewsfeedDirty.Where(p => !usedIds.Contains(p.Key)).Select(p => p.Value.Item1).Where(p => !string.IsNullOrWhiteSpace(p.Post.FacebookDetail.Link)
+                                                                                   || !string.IsNullOrWhiteSpace(p.Post.FacebookDetail.Message)
+                                                                                   || !string.IsNullOrWhiteSpace(p.Post.FacebookDetail.Picture)
+                                                                                   || !string.IsNullOrWhiteSpace(p.Post.FacebookDetail.VideoSource)
+                                                                                   || p.Post.FacebookDetail.ChildPublication != null).ToList();
+
+
+
+            }
+            return user;
+
+        }
+
+
+        private bool IsParentAlreadychild(Post parent, Post child)
+        {
+            var parentAlreadychild = false;
+            if (child.FacebookDetail.ChildPublication != null)
+            {
+                parentAlreadychild = IsParentAlreadychild(parent, child.FacebookDetail.ChildPublication.Post);
+                if (!parentAlreadychild)
+                {
+                    return child.FacebookDetail.ChildPublication.Post.FacebookDetail.FacebookPostId == parent.FacebookDetail.FacebookPostId;
+
+                }
+            }
+            return parentAlreadychild;
+        }
+        #endregion
+
+    }
+
+    public class FacebookStoryTag
+    {
+        public string Id { get; set; }
+        public FacebookStoryTagType Type { get; set; }
+        public int TagNumber { get; set; }
+        public string Name { get; set; }
+        public void SetType(string type)
+        {
+            if (type == "user")
+                this.Type = FacebookStoryTagType.user;
+            else if (type == "page")
+                this.Type = FacebookStoryTagType.page;
+            else if (type == "group")
+                this.Type = FacebookStoryTagType.group;
+            else if (type == "event")
+                this.Type = FacebookStoryTagType.facebookEvent;
+            else
+            {
+                this.Type = FacebookStoryTagType.other;
+            }
+        }
+
+    }
+    public enum FacebookStoryTagType
+    {
+        user = 1,
+        page = 2,
+        group = 3,
+        facebookEvent = 4,
+        other = 5
+
+    }
+
+}

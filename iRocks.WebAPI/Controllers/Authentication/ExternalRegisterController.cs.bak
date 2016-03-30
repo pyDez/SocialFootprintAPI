@@ -1,0 +1,147 @@
+using iRocks.AI;
+using iRocks.DataLayer;
+using iRocks.WebAPI.Helpers;
+using iRocks.WebAPI.Models;
+using Microsoft.AspNet.Identity;
+using Microsoft.AspNet.Identity.Owin;
+using System;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Web;
+using System.Web.Http;
+
+
+namespace iRocks.WebAPI.Controllers
+{
+    public class ExternalRegisterController : BaseApiController
+    {
+         private IAuthTokenRepository _tokenRepository;
+        private ISocialNetworkDataFeed _DataFeeder;
+        private ApplicationUserManager _userManager;
+
+        public ExternalRegisterController(ApplicationUserManager userManager, ISocialNetworkDataFeed dataFeeder, IAuthTokenRepository authTokenRepository,
+            IUserRepository userRepository, IPostRepository postRepository, IVoteRepository voteRepository, ICategoryRepository categoryRepository)
+            : base(userRepository, postRepository, voteRepository, categoryRepository)
+        {
+            UserManager = userManager;
+            _DataFeeder = dataFeeder;
+            _tokenRepository = authTokenRepository;
+        }
+        public ApplicationUserManager UserManager
+        {
+            get
+            {
+                return _userManager ?? HttpContext.Current.GetOwinContext().GetUserManager<ApplicationUserManager>();
+            }
+            private set
+            {
+                _userManager = value;
+            }
+        }
+
+        [AllowAnonymous]
+        public async Task<IHttpActionResult> Post(RegisterExternalBindingModel model)
+        {
+
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var verifiedAccessToken = await AuthenticationHelper.VerifyExternalAccessToken(model.Provider, model.ExternalAccessToken);
+            if (verifiedAccessToken == null)
+            {
+                return BadRequest("Invalid Provider or External Access Token");
+            }
+            //recherche si il existe déjà dans les utilisateurs ayant un "externalregister"
+            AppUser user = await TheUserRepository.FindAsync(new UserLoginInfo(model.Provider, verifiedAccessToken.user_id));
+            if (user == null)
+            {
+                switch (model.Provider)
+                {
+                    case "Facebook":
+                        FacebookUserDetailDapperRepository FacebookUserDetailRepository = new FacebookUserDetailDapperRepository();
+                        var FacebookDetails = FacebookUserDetailRepository.Select(new { FacebookUserId = verifiedAccessToken.user_id });
+                        if (FacebookDetails.Any())
+                            user = TheUserRepository.Select(DephtLevel.UserBasic, new { AppUserId = FacebookDetails.SingleOrDefault().AppUserId }).SingleOrDefault();
+                        break;
+                    default:
+                        break;
+                }
+            }
+
+            if (user != null)
+            {
+                if (user.Activated)
+                {
+                    return BadRequest("External user is already registered");
+                }
+                user.FacebookDetail.FacebookAccessToken = model.ExternalAccessToken;
+                user.FacebookDetail.FacebookUserId = verifiedAccessToken.user_id;
+                user.UserName = model.Email;
+            }
+            else
+            {
+                user = new AppUser() { UserName = model.Email, FirstName = model.UserName };
+                user.FacebookDetail = new FacebookUserDetail() { FacebookAccessToken = model.ExternalAccessToken, FacebookUserId = verifiedAccessToken.user_id };
+                user.FacebookDetail.SetSnapshot(user.FacebookDetail);
+            }
+            user.SigningUpDate = DateTime.Now;
+
+           
+            var result = await UserManager.CreateAsync(user);
+            if (!result.Succeeded)
+            {
+                return GetErrorResult(result);
+            }
+
+            var info = new ExternalLoginInfo()
+            {
+                DefaultUserName = model.Email,
+                Login = new UserLoginInfo(model.Provider, verifiedAccessToken.user_id)
+            };
+
+            result = await UserManager.AddLoginAsync(user.Id, info.Login);
+            if (!result.Succeeded)
+            {
+                return GetErrorResult(result);
+            }
+
+            //generate access token response
+            var accessTokenResponse = AuthenticationHelper.GenerateLocalAccessTokenResponse(user);
+            //_DataFeeder.FeedData(user);
+
+            return Ok(accessTokenResponse);
+        }
+
+        private IHttpActionResult GetErrorResult(IdentityResult result)
+        {
+            if (result == null)
+            {
+                return InternalServerError();
+            }
+
+            if (!result.Succeeded)
+            {
+                if (result.Errors != null)
+                {
+                    foreach (string error in result.Errors)
+                    {
+                        ModelState.AddModelError("", error);
+                    }
+                }
+
+                if (ModelState.IsValid)
+                {
+                    // No ModelState errors are available to send, so just return an empty BadRequest.
+                    return BadRequest();
+                }
+
+                return BadRequest(ModelState);
+            }
+
+            return null;
+        }
+
+    }
+}

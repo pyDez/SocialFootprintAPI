@@ -1,0 +1,38 @@
+﻿<div infinite-scroll="loadMore()" infinite-scroll-distance="3">
+    <div ng-repeat=" duel in feeds" class="list-group col-md-12">
+        <div class="col-md-12 aDuel" ng-class="{'list-group-item-success': isVoted($index), 'list-group-item-danger': !isVoted($index)}">
+            <!--<span class="badge"><span class="glyphicon glyphicon-thumbs-up"></span></span>-->
+            <div class="text-center lead category">{{duel.FirstPublication.Post.PostCategory.Label}}</div>
+
+
+            <div class="row">
+                <div class="col-md-6">
+                    <div ng-repeat="post in [duel.FirstPublication]" ng-include="'socialFootprintApp/shared/post.html'"
+                         jqyoui-droppable="{onDrop:'vote(true, $parent.$parent.$index)'}" data-drop="voteData.PostAId== {{duel.FirstPublication.Post.PostId}}"></div>
+
+
+                </div>
+
+                <div ng-show="duel.SecondPublication" class="col-md-6">
+
+                    <div ng-repeat="post in [duel.SecondPublication]" ng-include="'socialFootprintApp/shared/post.html'"
+                         jqyoui-droppable="{onDrop:'vote(false, $parent.$parent.$index)'}" data-drop="voteData.PostBId== {{duel.SecondPublication.Post.PostId}}"></div>
+                </div>
+
+            </div>
+
+        </div>
+        <div class="col-md-12">
+            <div class="ApprovedButtonContainer">
+                <img class="ApprovedButton" alt="Approved by me" src="style/ApproveIco.svg" draggable="true" ng-hide="isVoted($index)" data-drag="true"
+                     data-jqyoui-options="{revert: 'invalid'}" jqyoui-draggable="{onStart:'setDropZone(duel.FirstPublication.Post.PostId, duel.SecondPublication.Post.PostId, $index )', onStop: 'clearDropZone', animate:true}">
+            </div>
+        </div>
+
+
+    </div>
+</div>
+<input type="hidden" value="{{nextPageUrl}}" id="NextPageNewsFeed" />
+
+
+

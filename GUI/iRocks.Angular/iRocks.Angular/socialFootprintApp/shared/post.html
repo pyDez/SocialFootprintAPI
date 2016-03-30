@@ -1,0 +1,31 @@
+﻿<div class="panel" ng-class="{'dropZone': $parent.$parent.voteData.Index==$parent.$parent.$index}">
+    <div class=" panel-heading" ng-hide="!$parent.$parent.isVoted($parent.$parent.$index)}  && !$parent.$parent.isProfile">
+        <ul class="list-inline">
+            <li>
+                <img ng-src="http://graph.facebook.com/{{post.User.FacebookDetail.FacebookUserId}}/picture" />
+            </li>
+            <li>
+                <div>{{post.User.FirstName}} {{post.User.LastName}} {{$parent.$parent.isProfile}} </div>
+                {{$parent.$parent.isVoted($parent.$parent.$index)}}
+            </li>
+        </ul>
+    </div>
+
+    <div class="panel-body">
+        <div>{{post.Post.FacebookDetail.Story}}</div>
+        {{post.Post.FacebookDetail.Message}}
+        <div ng-switch="post.Post.FacebookDetail.GeneralStatusType">
+            <div ng-switch-when="link"></div>
+            <div ng-switch-when="status"></div>
+            <div ng-switch-when="photo">
+                <img ng-src="{{post.Post.FacebookDetail.Picture}}" class="img-thumbnail " />
+            </div>
+            <div ng-switch-when="video">
+                <embed type="application/x-shockwave-flash" src="{{post.Post.FacebookDetail.VideoSource}}" />
+            </div>
+            <div ng-switch-default></div>
+        </div>
+        <a ng-show="post.Post.FacebookDetail.Link" href="{{post.Post.FacebookDetail.Link}}">See on facebook</a>
+
+    </div>
+</div>

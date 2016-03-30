@@ -1,0 +1,36 @@
+﻿<div class="row">
+    <div class="col-md-2">
+        &nbsp;
+    </div>
+    <div class="col-md-8">
+        <h3>Associate your {{registerData.provider}} Account</h3>
+        <hr />
+        <p class="text-success">You have successfully autheticated with <strong>{{registerData.provider}} </strong>. Please enter your email address below and click the Register button to log in.</p>
+        <div class="row">
+            <div class="col-md-3">
+                &nbsp;
+            </div>
+            <div class="col-md-6">
+                <!--<div class="form-group">-->
+                <form class="form-register" name="associateForm" role="form">
+                    <input type="email" class="form-control" placeholder="Email Address" data-ng-model="registerData.userName" required autofocus>
+                    <button class="btn btn-sm btn-info btn-block" type="submit" style="margin-top:10px;" data-ng-click="associateForm.$valid && registerExternal()">Register</button>
+                </form>
+                
+
+
+
+                <!--</div>-->
+                <div data-ng-hide="message == ''" data-ng-class="(savedSuccessfully) ? 'alert alert-success' : 'alert alert-danger'">
+                    {{message}}
+                </div>
+            </div>
+            <div class="col-md-3">
+                &nbsp;
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        &nbsp;
+    </div>
+</div>

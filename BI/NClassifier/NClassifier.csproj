@@ -1,0 +1,174 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" DefaultTargets="Build">
+  <PropertyGroup>
+    <ProjectType>Local</ProjectType>
+    <ProductVersion>7.10.3077</ProductVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{688701F9-7D95-435D-941F-54A4F3437205}</ProjectGuid>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ApplicationIcon />
+    <AssemblyKeyContainerName />
+    <AssemblyName>NClassifier</AssemblyName>
+    <AssemblyOriginatorKeyFile />
+    <DefaultClientScript>JScript</DefaultClientScript>
+    <DefaultHTMLPageLayout>Grid</DefaultHTMLPageLayout>
+    <DefaultTargetSchema>IE50</DefaultTargetSchema>
+    <DelaySign>false</DelaySign>
+    <OutputType>Library</OutputType>
+    <RootNamespace>NClassifier</RootNamespace>
+    <RunPostBuildEvent>OnBuildSuccess</RunPostBuildEvent>
+    <StartupObject />
+    <FileUpgradeFlags>
+    </FileUpgradeFlags>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <UpgradeBackupLocation>
+    </UpgradeBackupLocation>
+    <OldToolsVersion>0.0</OldToolsVersion>
+    <TargetFrameworkProfile />
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <OutputPath>bin\Debug\</OutputPath>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <BaseAddress>285212672</BaseAddress>
+    <CheckForOverflowUnderflow>false</CheckForOverflowUnderflow>
+    <ConfigurationOverrideFile />
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <DocumentationFile />
+    <DebugSymbols>true</DebugSymbols>
+    <FileAlignment>4096</FileAlignment>
+    <NoStdLib>false</NoStdLib>
+    <NoWarn />
+    <Optimize>false</Optimize>
+    <RegisterForComInterop>false</RegisterForComInterop>
+    <RemoveIntegerChecks>false</RemoveIntegerChecks>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <WarningLevel>4</WarningLevel>
+    <DebugType>full</DebugType>
+    <ErrorReport>prompt</ErrorReport>
+    <Prefer32Bit>false</Prefer32Bit>
+    <LangVersion>5</LangVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <OutputPath>bin\Release\</OutputPath>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <BaseAddress>285212672</BaseAddress>
+    <CheckForOverflowUnderflow>false</CheckForOverflowUnderflow>
+    <ConfigurationOverrideFile />
+    <DefineConstants>TRACE</DefineConstants>
+    <DocumentationFile />
+    <DebugSymbols>false</DebugSymbols>
+    <FileAlignment>4096</FileAlignment>
+    <NoStdLib>false</NoStdLib>
+    <NoWarn />
+    <Optimize>true</Optimize>
+    <RegisterForComInterop>false</RegisterForComInterop>
+    <RemoveIntegerChecks>false</RemoveIntegerChecks>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <WarningLevel>4</WarningLevel>
+    <DebugType>none</DebugType>
+    <ErrorReport>prompt</ErrorReport>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System">
+      <Name>System</Name>
+    </Reference>
+    <Reference Include="System.Data">
+      <Name>System.Data</Name>
+    </Reference>
+    <Reference Include="System.Xml">
+      <Name>System.XML</Name>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="AbstractClassifier.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="AssemblyInfo.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Bayesian\BayesianClassifier.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Bayesian\ICategorizedWordsDataSource.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Bayesian\IDbConnectionManager.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Bayesian\IWordsDataSource.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Bayesian\DbWordsDataSource.cs" />
+    <Compile Include="Bayesian\SimpleWordsDataSource.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Bayesian\WordProbability.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Bayesian\WordsDataSourceException.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="ClassifierException.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="CustomizableStopWordProvider.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="DefaultStopWordProvider.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="DefaultTokenizer.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="ICategorizedClassifier.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="IClassifier.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="IClassifierConstants.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="IStopWordProvider.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="ITokenizer.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="ITrainable.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="ITrainableClassifier.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="PorterStemmer.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="SimpleHtmlTokenizer.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Summarizer\ISummarizer.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Summarizer\SimpleSummarizer.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Utilities.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Content Include="DefaultStopWords.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Data\iRocks.DataLayer\iRocks.DataLayer.csproj">
+      <Project>{7f86d5cc-e21e-4ec8-9a27-2499a4a2f3dc}</Project>
+      <Name>iRocks.DataLayer</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <PropertyGroup>
+    <PreBuildEvent />
+    <PostBuildEvent />
+  </PropertyGroup>
+</Project>
